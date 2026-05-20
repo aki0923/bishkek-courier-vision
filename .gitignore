@@ -1,0 +1,37 @@
+# Backend
+/backend/vendor/
+/backend/.env
+/backend/storage/logs/*
+/backend/storage/uploads/*
+
+# Mobile
+/mobile/.dart_tool/
+/mobile/.flutter-plugins
+/mobile/.flutter-plugins-dependencies
+/mobile/.packages
+/mobile/build/
+/mobile/ios/
+/mobile/android/
+
+# AI Service
+/ai-service/__pycache__/
+/ai-service/*.pyc
+/ai-service/.env
+/ai-service/venv/
+
+# Docker
+/docker/mysql/data/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# Environment
+.env
+.env.local
+
+# OS
+.DS_Store
+Thumbs.db

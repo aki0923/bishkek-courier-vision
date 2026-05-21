@@ -1,0 +1,81 @@
+version: '3.8'
+
+services:
+  # MySQL Database
+  mysql:
+    image: mysql:8.0
+    container_name: bcv_mysql
+    restart: unless-stopped
+    environment:
+      MYSQL_DATABASE: bishkek_courier
+      MYSQL_ROOT_PASSWORD: rootpassword
+      MYSQL_USER: courierapp
+      MYSQL_PASSWORD: courierpass123
+    ports:
+      - "3306:3306"
+    volumes:
+      - ./docker/mysql/data:/var/lib/mysql
+      - ./docker/mysql/init:/docker-entrypoint-initdb.d
+    networks:
+      - courier_network
+
+  # PHP Backend API
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: bcv_backend
+    restart: unless-stopped
+    ports:
+      - "8000:80"
+    volumes:
+      - ./backend:/var/www/html
+    depends_on:
+      - mysql
+    environment:
+      DB_HOST: mysql
+      DB_NAME: bishkek_courier
+      DB_USER: courierapp
+      DB_PASSWORD: courierpass123
+    networks:
+      - courier_network
+
+  # Python AI Service
+  ai_service:
+    build:
+      context: ./ai-service
+      dockerfile: Dockerfile
+    container_name: bcv_ai
+    restart: unless-stopped
+    ports:
+      - "5000:5000"
+    volumes:
+      - ./ai-service:/app
+    environment:
+      FLASK_APP: app.py
+      FLASK_ENV: development
+      OPENAI_API_KEY: ${OPENAI_API_KEY}
+    networks:
+      - courier_network
+
+  # Nginx Reverse Proxy (опционально для production)
+  nginx:
+    image: nginx:alpine
+    container_name: bcv_nginx
+    restart: unless-stopped
+    ports:
+      - "80:80"
+    volumes:
+      - ./docker/nginx/nginx.conf:/etc/nginx/nginx.conf
+    depends_on:
+      - backend
+      - ai_service
+    networks:
+      - courier_network
+
+networks:
+  courier_network:
+    driver: bridge
+
+volumes:
+  mysql_data:

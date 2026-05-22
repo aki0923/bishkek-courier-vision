@@ -10,7 +10,8 @@ https://trello.com/invite/b/6a0ead130e6c28b4b1122a2d/ATTId2823ce6116146fd5a09578
 5. **Done** - Завершено
 
 ## Метки (Labels)
-- 🔵 **Backend** - Backend задачи
-- 🟣 **Frontend** - Frontend задачи
-- 🟤 **AI** - AI/ML задачи
-- ⚫ **DevOps** - Инфраструктура
+- Синий*Backend** - Backend задачи
+- Фиолетовы   **Frontend** - Frontend задачи
+- Коричневый **AI** - AI/ML задачи
+- Черныый
+-  **DevOps** - Инфраструктура

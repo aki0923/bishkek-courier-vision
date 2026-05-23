@@ -3,6 +3,7 @@ from flask_cors import CORS
 import os
 from dotenv import load_dotenv
 import logging
+from middleware.performance import init_performance_monitoring
 
 # Load environment variables
 load_dotenv()
@@ -17,6 +18,8 @@ logging.basicConfig(
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
 )
 logger = logging.getLogger(__name__)
+
+init_performance_monitoring(app)
 
 # Import routes
 from routes import ai_routes

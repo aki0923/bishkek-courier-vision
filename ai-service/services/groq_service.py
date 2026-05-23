@@ -5,6 +5,10 @@ from config import Config
 import logging
 import json
 from services.cache_service import ai_cache
+from prompts.entrance_verification import (
+    get_entrance_verification_prompt,
+    get_spam_detection_prompt
+)
 
 logger = logging.getLogger(__name__)
 
@@ -23,7 +27,7 @@ class GroqService:
         logger.info(f"Initialized Groq client with model: {self.model}")
     
     def verify_entrance_photo(self, image_data: str) -> Dict[str, Any]:
-        """Verify entrance photo with caching"""
+        """Verify entrance photo with optimized prompts"""
         
         # Check cache first
         cached_result = ai_cache.get(image_data, 'verify_entrance')
@@ -31,26 +35,9 @@ class GroqService:
             cached_result['from_cache'] = True
             return cached_result
         
-        prompt = """You are an expert at identifying building entrances from photos.
-
-Analyze this image and determine if it shows a building entrance, gate, doorway, or entrance to a residential complex.
-
-IMPORTANT: Respond with ONLY valid JSON, no markdown formatting:
-
-{
-    "is_entrance": true or false,
-    "confidence": 0.0 to 1.0,
-    "entrance_type": "main_entrance" or "side_entrance" or "gate" or "doorway" or "intercom" or "none",
-    "visible_features": ["feature1", "feature2"],
-    "details": "Brief description in one sentence"
-}
-
-Rules:
-- is_entrance = true ONLY if image clearly shows a door, gate, or building entry
-- confidence: 0.9+ for clear photos, 0.7-0.9 for partial views, below 0.7 for unclear
-- Be strict: memes, random photos, screenshots should be marked as false"""
+        prompt = get_entrance_verification_prompt()
         
-        result = self.analyze_image(image_data, prompt, max_tokens=300)
+        result = self.analyze_image(image_data, prompt, max_tokens=400)
         
         if not result['success']:
             return {

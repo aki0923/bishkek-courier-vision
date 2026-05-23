@@ -183,3 +183,112 @@ def check_spam():
             'status': 'error',
             'message': str(e)
         }), 500
+    
+@bp.route('/verify-batch', methods=['POST'])
+def verify_batch():
+    """
+    Verify multiple images in batch using Groq Llama 4 Scout
+    
+    Request:
+    {
+        "images": [
+            {"id": "1", "image": "base64_data", "address_id": 1},
+            {"id": "2", "image": "base64_data", "address_id": 2}
+        ]
+    }
+    """
+    try:
+        data = request.get_json()
+        
+        if not data or 'images' not in data:
+            return jsonify({
+                'status': 'error',
+                'message': 'Images array is required'
+            }), 400
+        
+        images = data['images']
+        
+        if not isinstance(images, list) or len(images) == 0:
+            return jsonify({
+                'status': 'error',
+                'message': 'Images must be a non-empty array'
+            }), 400
+        
+        if len(images) > 10:
+            return jsonify({
+                'status': 'error',
+                'message': 'Maximum 10 images per batch (Groq rate limit)'
+            }), 400
+        
+        results = []
+        
+        for item in images:
+            image_id = item.get('id')
+            image_data = item.get('image')
+            address_id = item.get('address_id')
+            
+            if not image_data:
+                results.append({
+                    'id': image_id,
+                    'status': 'error',
+                    'message': 'Missing image data'
+                })
+                continue
+            
+            try:
+                # Check spam
+                spam_result = groq_service.detect_spam(image_data)
+                
+                if spam_result['is_spam'] and spam_result['confidence'] > 0.7:
+                    results.append({
+                        'id': image_id,
+                        'status': 'rejected',
+                        'reason': 'spam',
+                        'details': spam_result['reason']
+                    })
+                    continue
+                
+                # Verify entrance
+                entrance_result = groq_service.verify_entrance_photo(image_data)
+                
+                is_valid = (
+                    entrance_result['is_entrance'] and 
+                    entrance_result['confidence'] >= Config.MIN_CONFIDENCE_THRESHOLD
+                )
+                
+                points_earned = 0
+                if is_valid:
+                    points_earned = 10
+                    if entrance_result['confidence'] >= 0.9:
+                        points_earned += 5
+                
+                results.append({
+                    'id': image_id,
+                    'status': 'success' if is_valid else 'rejected',
+                    'is_valid_entrance': is_valid,
+                    'confidence': entrance_result['confidence'],
+                    'points_earned': points_earned,
+                    'from_cache': entrance_result.get('from_cache', False)
+                })
+                
+            except Exception as e:
+                logger.error(f"Error processing image {image_id}: {e}")
+                results.append({
+                    'id': image_id,
+                    'status': 'error',
+                    'message': str(e)
+                })
+        
+        return jsonify({
+            'status': 'success',
+            'results': results,
+            'total_processed': len(results),
+            'ai_provider': 'Groq Llama 4 Scout'
+        })
+        
+    except Exception as e:
+        logger.error(f"Batch verification error: {str(e)}")
+        return jsonify({
+            'status': 'error',
+            'message': 'Internal server error'
+        }), 500

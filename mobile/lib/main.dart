@@ -25,7 +25,7 @@ class MyApp extends StatelessWidget {
         title: 'Bishkek Courier Vision',
         debugShowCheckedModeBanner: false,
         theme: AppTheme.darkTheme,
-        home: const MapScreen(),
+        home: const LoginScreen(),
       ),
     );
   }

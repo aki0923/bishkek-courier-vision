@@ -94,6 +94,8 @@ class _ContributeScreenState extends State<ContributeScreen> {
     );
   }
 
+  // В методе _submitContribution заменить симуляцию на реальный API вызов:
+
   Future<void> _submitContribution() async {
     if (!_formKey.currentState!.validate()) {
       return;
@@ -105,27 +107,201 @@ class _ContributeScreenState extends State<ContributeScreen> {
       return;
     }
 
-    if (_contributionType == 'hint' && _hintController.text.isEmpty) {
-      _showError('Пожалуйста, введите подсказку');
-      return;
-    }
-
-    if (_contributionType == 'code' && _codeController.text.isEmpty) {
-      _showError('Пожалуйста, введите код домофона');
-      return;
-    }
-
     setState(() => _isSubmitting = true);
 
-    // TODO: Upload to API
-    await Future.delayed(const Duration(seconds: 2));
+    try {
+      final apiService = ApiService();
 
-    setState(() => _isSubmitting = false);
+      // Prepare photo data
+      String? photoData;
+      if (_contributionType == 'photo' && _selectedImage != null) {
+        final bytes = await _selectedImage!.readAsBytes();
+        photoData = base64Encode(bytes);
+      }
 
-    if (mounted) {
-      _showSuccessDialog();
+      // Submit contribution
+      final response = await apiService.submitContribution(
+        addressId: widget.address.id,
+        type: _contributionType,
+        photoData: photoData,
+        hintText: _contributionType == 'hint' ? _hintController.text : null,
+        code: _contributionType == 'code' ? _codeController.text : null,
+        entranceNumber: _selectedEntrance,
+        gateNumber: _contributionType == 'code' ? _gateNumberController.text : null,
+      );
+
+      setState(() => _isSubmitting = false);
+
+      if (mounted) {
+        if (response['status'] == 'success') {
+          // Update user balance
+          final authProvider = Provider.of<AuthProvider>(context, listen: false);
+          authProvider.updateBalance(response['data']['new_balance']);
+          authProvider.incrementWeeklyContributions();
+
+          _showSuccessDialog(response['data']);
+        } else if (response['status'] == 'rejected') {
+          _showRejectionDialog(response);
+        } else {
+          _showError(response['message'] ?? 'Ошибка при отправке');
+        }
+      }
+    } catch (e) {
+      setState(() => _isSubmitting = false);
+      _showError('Ошибка: $e');
     }
   }
+
+  void _showSuccessDialog(Map<String, dynamic> data) {
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) => AlertDialog(
+        backgroundColor: AppTheme.cardDark,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(20),
+        ),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Container(
+              padding: const EdgeInsets.all(16),
+              decoration: BoxDecoration(
+                color: AppTheme.successGreen.withOpacity(0.2),
+                shape: BoxShape.circle,
+              ),
+              child: const Icon(
+                Icons.check_circle,
+                size: 64,
+                color: AppTheme.successGreen,
+              ),
+            ),
+            const SizedBox(height: 24),
+            const Text(
+              'Вклад подтвержден!',
+              style: TextStyle(
+                fontSize: 24,
+                fontWeight: FontWeight.bold,
+                color: AppTheme.textPrimary,
+              ),
+              textAlign: TextAlign.center,
+            ),
+            const SizedBox(height: 12),
+            Text(
+              'ИИ подтвердил достоверность ${_contributionType == 'photo' ? 'фото' : 'данных'}',
+              style: const TextStyle(
+                fontSize: 14,
+                color: AppTheme.textSecondary,
+              ),
+              textAlign: TextAlign.center,
+            ),
+            const SizedBox(height: 24),
+            Container(
+              padding: const EdgeInsets.all(16),
+              decoration: BoxDecoration(
+                color: AppTheme.accentYellow.withOpacity(0.2),
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  const Icon(
+                    Icons.stars,
+                    color: AppTheme.accentYellow,
+                    size: 32,
+                  ),
+                  const SizedBox(width: 12),
+                  Text(
+                    '+${data['points_earned']} баллов',
+                    style: const TextStyle(
+                      fontSize: 24,
+                      fontWeight: FontWeight.bold,
+                      color: AppTheme.accentYellow,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            if (data['ai_confidence'] != null) ...[
+              const SizedBox(height: 12),
+              Text(
+                'Уверенность AI: ${(data['ai_confidence'] * 100).toInt()}%',
+                style: const TextStyle(
+                  fontSize: 12,
+                  color: AppTheme.textSecondary,
+                ),
+              ),
+            ],
+            const SizedBox(height: 24),
+            SizedBox(
+              width: double.infinity,
+              child: ElevatedButton(
+                onPressed: () {
+                  Navigator.pop(context); // Close dialog
+                  Navigator.pop(context); // Close contribute screen
+                },
+                child: const Text('Отлично!'),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  void _showRejectionDialog(Map<String, dynamic> response) {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        backgroundColor: AppTheme.cardDark,
+        title: const Row(
+          children: [
+            Icon(Icons.warning, color: AppTheme.errorRed),
+            SizedBox(width: 8),
+            Text('Вклад отклонен'),
+          ],
+        ),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              response['message'] ?? 'ИИ не смог подтвердить данные',
+              style: const TextStyle(fontSize: 16),
+            ),
+            if (response['details'] != null) ...[
+              const SizedBox(height: 12),
+              Text(
+                response['details'],
+                style: const TextStyle(
+                  fontSize: 14,
+                  color: AppTheme.textSecondary,
+                ),
+              ),
+            ],
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Понятно'),
+          ),
+          ElevatedButton(
+            onPressed: () {
+              Navigator.pop(context);
+              // Clear and try again
+              setState(() {
+                _selectedImage = null;
+              });
+            },
+            child: const Text('Попробовать снова'),
+          ),
+        ],
+      ),
+    );
+  }
+
+
 
   void _showSuccessDialog() {
     showDialog(

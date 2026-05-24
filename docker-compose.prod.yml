@@ -1,0 +1,107 @@
+version: '3.8'
+
+services:
+  mysql:
+    image: mysql:8.0
+    container_name: bcv_mysql_prod
+    restart: always
+    environment:
+      MYSQL_DATABASE: ${DB_NAME}
+      MYSQL_ROOT_PASSWORD: ${DB_ROOT_PASSWORD}
+      MYSQL_USER: ${DB_USER}
+      MYSQL_PASSWORD: ${DB_PASSWORD}
+    volumes:
+      - mysql_prod_data:/var/lib/mysql
+      - ./docker/mysql/init:/docker-entrypoint-initdb.d:ro
+    networks:
+      - bcv_prod
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    deploy:
+      resources:
+        limits:
+          cpus: '1.0'
+          memory: 1G
+        reservations:
+          memory: 512M
+
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    image: bcv-backend:${VERSION:-latest}
+    container_name: bcv_backend_prod
+    restart: always
+    expose:
+      - "80"
+    depends_on:
+      mysql:
+        condition: service_healthy
+    environment:
+      DB_HOST: mysql
+      DB_NAME: ${DB_NAME}
+      DB_USER: ${DB_USER}
+      DB_PASSWORD: ${DB_PASSWORD}
+      AI_SERVICE_URL: http://ai_service:5000
+      JWT_SECRET: ${JWT_SECRET}
+      APP_ENV: production
+    networks:
+      - bcv_prod
+    volumes:
+      - backend_prod_uploads:/var/www/html/storage/uploads
+    deploy:
+      resources:
+        limits:
+          cpus: '1.0'
+          memory: 512M
+      replicas: 2  # Scale horizontally
+
+  ai_service:
+    build:
+      context: ./ai-service
+      dockerfile: Dockerfile
+    image: bcv-ai:${VERSION:-latest}
+    container_name: bcv_ai_prod
+    restart: always
+    expose:
+      - "5000"
+    environment:
+      FLASK_ENV: production
+      GROQ_API_KEY: ${GROQ_API_KEY}
+      GROQ_MODEL: ${GROQ_MODEL}
+    networks:
+      - bcv_prod
+    deploy:
+      resources:
+        limits:
+          cpus: '2.0'
+          memory: 1G
+
+  nginx:
+    image: nginx:alpine
+    container_name: bcv_nginx_prod
+    restart: always
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./docker/nginx/nginx.prod.conf:/etc/nginx/nginx.conf:ro
+      - ./docker/nginx/ssl:/etc/nginx/ssl:ro
+      - nginx_prod_logs:/var/log/nginx
+    depends_on:
+      - backend
+      - ai_service
+    networks:
+      - bcv_prod
+
+networks:
+  bcv_prod:
+    driver: bridge
+
+volumes:
+  mysql_prod_data:
+  backend_prod_uploads:
+  nginx_prod_logs:

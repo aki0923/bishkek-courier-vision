@@ -7,16 +7,21 @@ services:
     restart: unless-stopped
     environment:
       MYSQL_DATABASE: bishkek_courier
-      MYSQL_ROOT_PASSWORD: rootpassword
-      MYSQL_USER: courierapp
-      MYSQL_PASSWORD: courierpass123
+      MYSQL_ROOT_PASSWORD: ${DB_ROOT_PASSWORD:-rootpassword}
+      MYSQL_USER: ${DB_USER:-courierapp}
+      MYSQL_PASSWORD: ${DB_PASSWORD:-courierpass123}
     ports:
       - "3306:3306"
     volumes:
-      - ./docker/mysql/data:/var/lib/mysql
+      - mysql_data:/var/lib/mysql
       - ./docker/mysql/init:/docker-entrypoint-initdb.d
     networks:
       - courier_network
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
     logging:
       driver: "json-file"
       options:
@@ -33,27 +38,30 @@ services:
       - "8000:80"
     volumes:
       - ./backend:/var/www/html
-      - ./logs/backend:/var/log/apache2
+      - backend_uploads:/var/www/html/storage/uploads
     depends_on:
-      - mysql
+      mysql:
+        condition: service_healthy
     environment:
       DB_HOST: mysql
       DB_NAME: bishkek_courier
-      DB_USER: courierapp
-      DB_PASSWORD: courierpass123
+      DB_USER: ${DB_USER:-courierapp}
+      DB_PASSWORD: ${DB_PASSWORD:-courierpass123}
       AI_SERVICE_URL: http://ai_service:5000
+      JWT_SECRET: ${JWT_SECRET:-change-this-in-production}
     networks:
       - courier_network
-    logging:
-      driver: "json-file"
-      options:
-        max-size: "10m"
-        max-file: "3"
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost/api/health"]
       interval: 30s
       timeout: 10s
       retries: 3
+      start_period: 40s
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
 
   ai_service:
     build:
@@ -65,23 +73,25 @@ services:
       - "5000:5000"
     volumes:
       - ./ai-service:/app
-      - ./logs/ai:/app/logs
+      - ai_logs:/app/logs
     environment:
       FLASK_APP: app.py
-      FLASK_ENV: development
-      OPENAI_API_KEY: ${OPENAI_API_KEY}
+      FLASK_ENV: ${FLASK_ENV:-production}
+      GROQ_API_KEY: ${GROQ_API_KEY}
+      GROQ_MODEL: ${GROQ_MODEL:-meta-llama/llama-4-scout-17b-16e-instruct}
     networks:
       - courier_network
-    logging:
-      driver: "json-file"
-      options:
-        max-size: "10m"
-        max-file: "3"
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:5000/ai/health"]
       interval: 30s
       timeout: 10s
       retries: 3
+      start_period: 30s
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
 
   nginx:
     image: nginx:alpine
@@ -90,27 +100,37 @@ services:
     ports:
       - "80:80"
     volumes:
-      - ./docker/nginx/nginx.conf:/etc/nginx/nginx.conf
-      - ./logs/nginx:/var/log/nginx
+      - ./docker/nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+      - nginx_logs:/var/log/nginx
     depends_on:
-      - backend
-      - ai_service
+      backend:
+        condition: service_healthy
+      ai_service:
+        condition: service_healthy
     networks:
       - courier_network
-    logging:
-      driver: "json-file"
-      options:
-        max-size: "10m"
-        max-file: "3"
     healthcheck:
       test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost/health"]
       interval: 30s
       timeout: 10s
       retries: 3
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
 
 networks:
   courier_network:
     driver: bridge
+    name: bcv_network
 
 volumes:
   mysql_data:
+    name: bcv_mysql_data
+  backend_uploads:
+    name: bcv_backend_uploads
+  ai_logs:
+    name: bcv_ai_logs
+  nginx_logs:
+    name: bcv_nginx_logs

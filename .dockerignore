@@ -1,0 +1,40 @@
+# Git
+.git
+.gitignore
+.gitattributes
+
+# Documentation
+*.md
+docs/
+
+# Testing
+tests/
+*.test.php
+phpunit.xml
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+logs/
+*.log
+
+# Dependencies (will be installed in container)
+node_modules/
+vendor/
+
+# Environment
+.env
+.env.local
+.env.example
+
+# Build artifacts
+build/
+dist/

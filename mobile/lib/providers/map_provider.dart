@@ -1,7 +1,6 @@
 import 'package:flutter/foundation.dart';
 import 'package:latlong2/latlong.dart';
 import '../models/address_model.dart';
-import '../services/api_service.dart';
 
 class MapProvider with ChangeNotifier {
   List<AddressModel> _addresses = [];
@@ -14,24 +13,8 @@ class MapProvider with ChangeNotifier {
   LatLng? get currentLocation => _currentLocation;
   bool get isLoading => _isLoading;
 
-  Future<void> loadNearbyAddresses() async {
-    _isLoading = true;
-    notifyListeners();
-
-    try {
-      final apiService = ApiService();
-      final response = await apiService.getNearbyAddresses();
-
-      if (response['status'] == 'success') {
-        _addresses = (response['data'] as List)
-            .map((json) => AddressModel.fromJson(json))
-            .toList();
-      }
-    } catch (e) {
-      debugPrint('Error loading addresses: $e');
-    }
-
-    _isLoading = false;
+  void setAddresses(List<AddressModel> addresses) {
+    _addresses = addresses;
     notifyListeners();
   }
 
@@ -49,4 +32,10 @@ class MapProvider with ChangeNotifier {
     _currentLocation = LatLng(lat, lng);
     notifyListeners();
   }
+
+  void setLoading(bool loading) {
+    _isLoading = loading;
+    notifyListeners();
+  }
 }
+

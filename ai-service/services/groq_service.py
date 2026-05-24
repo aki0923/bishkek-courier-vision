@@ -9,6 +9,7 @@ from prompts.entrance_verification import (
     get_entrance_verification_prompt,
     get_spam_detection_prompt
 )
+from services.fallback_service import FallbackService
 
 logger = logging.getLogger(__name__)
 
@@ -27,7 +28,7 @@ class GroqService:
         logger.info(f"Initialized Groq client with model: {self.model}")
     
     def verify_entrance_photo(self, image_data: str) -> Dict[str, Any]:
-        """Verify entrance photo with optimized prompts"""
+        """Verify entrance photo with fallback support"""
         
         # Check cache first
         cached_result = ai_cache.get(image_data, 'verify_entrance')
@@ -35,19 +36,15 @@ class GroqService:
             cached_result['from_cache'] = True
             return cached_result
         
-        prompt = get_entrance_verification_prompt()
-        
-        result = self.analyze_image(image_data, prompt, max_tokens=400)
-        
-        if not result['success']:
-            return {
-                'is_entrance': False,
-                'confidence': 0.0,
-                'error': result.get('error'),
-                'from_cache': False
-            }
-        
         try:
+            prompt = get_entrance_verification_prompt()
+            result = self.analyze_image(image_data, prompt, max_tokens=400)
+            
+            if not result['success']:
+                # Groq failed - use fallback
+                logger.warning("Groq API failed, using fallback")
+                return FallbackService.basic_image_check(image_data)
+        
             response_text = result['result'].strip()
             
             if response_text.startswith('```'):
@@ -73,26 +70,9 @@ class GroqService:
             
             return final_result
             
-        except json.JSONDecodeError as e:
-            logger.error(f"Failed to parse Groq response as JSON: {e}")
-            
-            response_text = result['result'].lower()
-            is_entrance = any(word in response_text for word in [
-                'entrance', 'door', 'gate', 'doorway', 'intercom'
-            ])
-            
-            fallback_result = {
-                'is_entrance': is_entrance,
-                'confidence': 0.6 if is_entrance else 0.4,
-                'entrance_type': 'unknown',
-                'details': result['result'][:200],
-                'usage': result['usage'],
-                'from_cache': False,
-                'parse_error': True
-            }
-            
-            ai_cache.set(image_data, 'verify_entrance', fallback_result)
-            return fallback_result
+        except Exception as e:
+                logger.error(f"Verification failed: {e}")
+                return FallbackService.basic_image_check(image_data)
     
     def detect_spam(self, image_data: str) -> Dict[str, Any]:
         """Detect spam with caching"""
@@ -102,19 +82,7 @@ class GroqService:
             cached_result['from_cache'] = True
             return cached_result
         
-        prompt = """You are a content moderator. Analyze if this image is spam, meme, inappropriate, or irrelevant to building entrances.
-
-Respond with ONLY valid JSON, no markdown:
-
-{
-    "is_spam": true or false,
-    "spam_type": "meme" or "inappropriate" or "random_photo" or "screenshot" or "text_image" or "advertisement" or "none",
-    "confidence": 0.0 to 1.0,
-    "reason": "Brief explanation"
-}
-
-Mark as spam if: meme, joke, screenshot, random photo, text-only image, advertisement.
-NOT spam if: real photo of building entrance, door, gate, intercom."""
+        prompt = get_spam_detection_prompt()
         
         result = self.analyze_image(image_data, prompt, max_tokens=200)
         

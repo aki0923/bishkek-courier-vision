@@ -1,7 +1,6 @@
 version: '3.8'
 
 services:
-  # MySQL Database
   mysql:
     image: mysql:8.0
     container_name: bcv_mysql
@@ -18,8 +17,12 @@ services:
       - ./docker/mysql/init:/docker-entrypoint-initdb.d
     networks:
       - courier_network
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
 
-  # PHP Backend API
   backend:
     build:
       context: ./backend
@@ -30,6 +33,7 @@ services:
       - "8000:80"
     volumes:
       - ./backend:/var/www/html
+      - ./logs/backend:/var/log/apache2
     depends_on:
       - mysql
     environment:
@@ -37,10 +41,20 @@ services:
       DB_NAME: bishkek_courier
       DB_USER: courierapp
       DB_PASSWORD: courierpass123
+      AI_SERVICE_URL: http://ai_service:5000
     networks:
       - courier_network
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost/api/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
 
-  # Python AI Service
   ai_service:
     build:
       context: ./ai-service
@@ -51,14 +65,24 @@ services:
       - "5000:5000"
     volumes:
       - ./ai-service:/app
+      - ./logs/ai:/app/logs
     environment:
       FLASK_APP: app.py
       FLASK_ENV: development
       OPENAI_API_KEY: ${OPENAI_API_KEY}
     networks:
       - courier_network
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:5000/ai/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
 
-  # Nginx Reverse Proxy (опционально для production)
   nginx:
     image: nginx:alpine
     container_name: bcv_nginx
@@ -67,11 +91,22 @@ services:
       - "80:80"
     volumes:
       - ./docker/nginx/nginx.conf:/etc/nginx/nginx.conf
+      - ./logs/nginx:/var/log/nginx
     depends_on:
       - backend
       - ai_service
     networks:
       - courier_network
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
 
 networks:
   courier_network:

@@ -7,6 +7,8 @@ use App\Database;
 class Address
 {
     private $db;
+    private static $cache = []; // In-memory cache
+    private static $cacheExpiry = 300; // 5 minutes
 
     public function __construct(Database $db)
     {
@@ -14,72 +16,94 @@ class Address
     }
 
     /**
-     * Find all addresses
-     */
-    public function findAll($limit = 50, $offset = 0)
-    {
-        $sql = "SELECT * FROM addresses 
-                ORDER BY created_at DESC 
-                LIMIT ? OFFSET ?";
-        
-        return $this->db->fetchAll($sql, [$limit, $offset]);
-    }
-
-    /**
-     * Find address by ID
-     */
-    public function findById($id)
-    {
-        $sql = "SELECT * FROM addresses WHERE id = ? LIMIT 1";
-        return $this->db->fetch($sql, [$id]);
-    }
-
-    /**
-     * Find nearby addresses using Haversine formula
+     * Find nearby addresses with optimized Haversine and caching
      */
     public function findNearby($lat, $lng, $radiusMeters = 2000)
     {
-        // Convert radius to degrees (approximate)
-        $radiusDegrees = $radiusMeters / 111320; // 1 degree ≈ 111.32 km
+        $cacheKey = "nearby_{$lat}_{$lng}_{$radiusMeters}";
+        
+        // Check cache
+        if (isset(self::$cache[$cacheKey])) {
+            $cached = self::$cache[$cacheKey];
+            if (time() - $cached['time'] < self::$cacheExpiry) {
+                return $cached['data'];
+            }
+        }
 
-        $sql = "SELECT *,
+        // Use bounding box first for efficiency (much faster than Haversine on all)
+        $radiusDegrees = $radiusMeters / 111320;
+        
+        $minLat = $lat - $radiusDegrees;
+        $maxLat = $lat + $radiusDegrees;
+        $minLng = $lng - $radiusDegrees;
+        $maxLng = $lng + $radiusDegrees;
+
+        $sql = "SELECT a.*,
                 (6371000 * acos(
-                    cos(radians(?)) * cos(radians(latitude)) *
-                    cos(radians(longitude) - radians(?)) +
-                    sin(radians(?)) * sin(radians(latitude))
-                )) AS distance
-                FROM addresses
+                    cos(radians(?)) * cos(radians(a.latitude)) *
+                    cos(radians(a.longitude) - radians(?)) +
+                    sin(radians(?)) * sin(radians(a.latitude))
+                )) AS distance,
+                (SELECT COUNT(*) FROM entrance_photos ep 
+                 JOIN contributions c ON ep.contribution_id = c.id 
+                 WHERE c.address_id = a.id AND c.status = 'verified') as photos_count,
+                (SELECT COUNT(*) FROM intercom_codes ic 
+                 WHERE ic.address_id = a.id AND ic.is_active = 1) as codes_count
+                FROM addresses a
+                WHERE a.latitude BETWEEN ? AND ?
+                  AND a.longitude BETWEEN ? AND ?
                 HAVING distance < ?
                 ORDER BY distance
                 LIMIT 20";
         
-        return $this->db->fetchAll($sql, [$lat, $lng, $lat, $radiusMeters]);
+        $result = $this->db->fetchAll($sql, [
+            $lat, $lng, $lat,
+            $minLat, $maxLat,
+            $minLng, $maxLng,
+            $radiusMeters
+        ]);
+
+        // Cache result
+        self::$cache[$cacheKey] = [
+            'time' => time(),
+            'data' => $result
+        ];
+
+        return $result;
     }
 
     /**
-     * Search addresses by name or address
+     * Find address by ID with related data in one query
      */
-    public function search($query)
+    public function findByIdWithDetails($id)
     {
-        $searchTerm = "%{$query}%";
+        $sql = "SELECT a.*,
+                (SELECT COUNT(*) FROM contributions WHERE address_id = a.id) as total_contributions
+                FROM addresses a
+                WHERE a.id = ?
+                LIMIT 1";
         
-        $sql = "SELECT * FROM addresses 
-                WHERE name LIKE ? OR address LIKE ?
-                ORDER BY name
-                LIMIT 20";
-        
-        return $this->db->fetchAll($sql, [$searchTerm, $searchTerm]);
+        return $this->db->fetch($sql, [$id]);
     }
 
     /**
-     * Get entrance photos for address
+     * Optimized photos query with user info
      */
     public function getEntrancePhotos($addressId)
     {
-        $sql = "SELECT ep.*, c.user_id, c.created_at as uploaded_at
+        $sql = "SELECT 
+                    ep.id,
+                    ep.photo_url,
+                    ep.entrance_number,
+                    ep.ai_verified,
+                    c.created_at as uploaded_at,
+                    u.courier_id,
+                    u.status as courier_status
                 FROM entrance_photos ep
                 JOIN contributions c ON ep.contribution_id = c.id
-                WHERE c.address_id = ? AND c.status = 'verified'
+                JOIN users u ON c.user_id = u.id
+                WHERE c.address_id = ? 
+                  AND c.status = 'verified'
                 ORDER BY ep.created_at DESC
                 LIMIT 10";
         
@@ -87,52 +111,27 @@ class Address
     }
 
     /**
-     * Get intercom codes for address
+     * Get statistics for address
      */
-    public function getIntercomCodes($addressId)
+    public function getStatistics($addressId)
     {
-        $sql = "SELECT * FROM intercom_codes 
-                WHERE address_id = ? AND is_active = 1
-                ORDER BY verified_count DESC, created_at DESC";
+        $sql = "SELECT 
+                    COUNT(DISTINCT c.id) as total_contributions,
+                    COUNT(DISTINCT CASE WHEN c.type = 'photo' THEN c.id END) as photos,
+                    COUNT(DISTINCT CASE WHEN c.type = 'code' THEN c.id END) as codes,
+                    COUNT(DISTINCT CASE WHEN c.type = 'hint' THEN c.id END) as hints,
+                    COUNT(DISTINCT c.user_id) as unique_contributors
+                FROM contributions c
+                WHERE c.address_id = ? AND c.status = 'verified'";
         
-        return $this->db->fetchAll($sql, [$addressId]);
+        return $this->db->fetch($sql, [$addressId]);
     }
 
     /**
-     * Get hints for address
+     * Clear cache
      */
-    public function getHints($addressId)
+    public static function clearCache()
     {
-        $sql = "SELECT h.*, c.user_id, c.created_at
-                FROM hints h
-                JOIN contributions c ON h.contribution_id = c.id
-                WHERE c.address_id = ? AND c.status = 'verified'
-                ORDER BY h.helpful_count DESC, c.created_at DESC
-                LIMIT 5";
-        
-        return $this->db->fetchAll($sql, [$addressId]);
-    }
-
-    /**
-     * Create new address
-     */
-    public function create($data)
-    {
-        $sql = "INSERT INTO addresses (
-                    name, address, latitude, longitude,
-                    building_type, total_entrances, has_security
-                ) VALUES (?, ?, ?, ?, ?, ?, ?)";
-        
-        $this->db->query($sql, [
-            $data['name'],
-            $data['address'],
-            $data['latitude'],
-            $data['longitude'],
-            $data['building_type'] ?? 'residential',
-            $data['total_entrances'] ?? 1,
-            $data['has_security'] ?? false
-        ]);
-
-        return $this->db->getConnection()->lastInsertId();
+        self::$cache = [];
     }
 }

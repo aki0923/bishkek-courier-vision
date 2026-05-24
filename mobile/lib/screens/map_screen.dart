@@ -159,7 +159,7 @@ class _MapScreenState extends State<MapScreen> {
                           point: mapProvider.currentLocation!,
                           width: 40,
                           height: 40,
-                          builder: (ctx) => Container(
+                          child: Container(
                             decoration: BoxDecoration(
                               color: AppTheme.primaryBlue,
                               shape: BoxShape.circle,
@@ -191,7 +191,7 @@ class _MapScreenState extends State<MapScreen> {
                           point: LatLng(address.latitude, address.longitude),
                           width: isSelected ? 60 : 50,
                           height: isSelected ? 60 : 50,
-                          builder: (ctx) => GestureDetector(
+                          child: GestureDetector(
                             onTap: () {
                               mapProvider.selectAddress(address);
                               _showAddressBottomSheet(address);

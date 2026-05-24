@@ -3,6 +3,11 @@ import 'package:image_picker/image_picker.dart';
 import 'dart:io';
 import '../models/address_model.dart';
 import '../utils/theme.dart';
+import 'dart:convert';
+import 'package:provider/provider.dart';
+import '../services/api_service.dart';
+import '../providers/auth_provider.dart';
+
 
 class ContributeScreen extends StatefulWidget {
   final AddressModel address;
@@ -152,6 +157,8 @@ class _ContributeScreenState extends State<ContributeScreen> {
     }
   }
 
+
+
   void _showSuccessDialog(Map<String, dynamic> data) {
     showDialog(
       context: context,
@@ -289,7 +296,7 @@ class _ContributeScreenState extends State<ContributeScreen> {
           ElevatedButton(
             onPressed: () {
               Navigator.pop(context);
-              // Clear and try again
+              // Очищаем форму, чтобы попробовать снова
               setState(() {
                 _selectedImage = null;
               });
@@ -297,95 +304,6 @@ class _ContributeScreenState extends State<ContributeScreen> {
             child: const Text('Попробовать снова'),
           ),
         ],
-      ),
-    );
-  }
-
-
-
-  void _showSuccessDialog() {
-    showDialog(
-      context: context,
-      barrierDismissible: false,
-      builder: (context) => AlertDialog(
-        backgroundColor: AppTheme.cardDark,
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(20),
-        ),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Container(
-              padding: const EdgeInsets.all(16),
-              decoration: BoxDecoration(
-                color: AppTheme.successGreen.withOpacity(0.2),
-                shape: BoxShape.circle,
-              ),
-              child: const Icon(
-                Icons.check_circle,
-                size: 64,
-                color: AppTheme.successGreen,
-              ),
-            ),
-            const SizedBox(height: 24),
-            const Text(
-              'Данные загружены!',
-              style: TextStyle(
-                fontSize: 24,
-                fontWeight: FontWeight.bold,
-                color: AppTheme.textPrimary,
-              ),
-              textAlign: TextAlign.center,
-            ),
-            const SizedBox(height: 12),
-            const Text(
-              'Наш ИИ проверяет достоверность фото и текста.\nЭто займёт около 10 минут.',
-              style: TextStyle(
-                fontSize: 14,
-                color: AppTheme.textSecondary,
-              ),
-              textAlign: TextAlign.center,
-            ),
-            const SizedBox(height: 24),
-            Container(
-              padding: const EdgeInsets.all(16),
-              decoration: BoxDecoration(
-                color: AppTheme.accentYellow.withOpacity(0.2),
-                borderRadius: BorderRadius.circular(12),
-              ),
-              child: const Row(
-                children: [
-                  Icon(
-                    Icons.stars,
-                    color: AppTheme.accentYellow,
-                    size: 32,
-                  ),
-                  SizedBox(width: 12),
-                  Expanded(
-                    child: Text(
-                      'Мы пришлём уведомление о начислении баллов',
-                      style: TextStyle(
-                        fontSize: 13,
-                        color: AppTheme.textPrimary,
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-            const SizedBox(height: 24),
-            SizedBox(
-              width: double.infinity,
-              child: ElevatedButton(
-                onPressed: () {
-                  Navigator.pop(context); // Close dialog
-                  Navigator.pop(context); // Close contribute screen
-                },
-                child: const Text('Отлично!'),
-              ),
-            ),
-          ],
-        ),
       ),
     );
   }

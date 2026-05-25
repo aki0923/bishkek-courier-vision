@@ -1,4 +1,4 @@
-version: '3.8'
+
 
 services:
   mysql:
@@ -39,6 +39,7 @@ services:
     volumes:
       - ./backend:/var/www/html
       - backend_uploads:/var/www/html/storage/uploads
+      - /var/www/html/vendor  #
     depends_on:
       mysql:
         condition: service_healthy

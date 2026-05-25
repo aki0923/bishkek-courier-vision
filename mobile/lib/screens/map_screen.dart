@@ -11,6 +11,7 @@ import '../models/address_model.dart';
 import '../utils/theme.dart';
 import 'address_detail_screen.dart';
 import 'profile_screen.dart';
+import 'contribute_screen.dart';
 
 class MapScreen extends StatefulWidget {
   const MapScreen({super.key});
@@ -42,6 +43,100 @@ class _MapScreenState extends State<MapScreen> {
 
     // Load nearby addresses
     await _loadNearbyAddresses();
+  }
+
+  void _showContributeAddressPicker() {
+    final mapProvider = Provider.of<MapProvider>(context, listen: false);
+
+    // Если адрес уже выбран - идем прямо на форму вклада
+    if (mapProvider.selectedAddress != null) {
+      Navigator.push(
+        context,
+        MaterialPageRoute(
+          builder: (_) => ContributeScreen(
+            address: mapProvider.selectedAddress!,
+          ),
+        ),
+      ).then((_) => setState(() => _selectedIndex = 0));
+      return;
+    }
+
+    // Если адрес не выбран - показываем список
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: AppTheme.cardDark,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+      ),
+      builder: (context) {
+        return Container(
+          padding: const EdgeInsets.all(20),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Text(
+                'Выберите адрес',
+                style: TextStyle(
+                  fontSize: 20,
+                  fontWeight: FontWeight.bold,
+                  color: AppTheme.textPrimary,
+                ),
+              ),
+              const SizedBox(height: 8),
+              const Text(
+                'Выберите адрес на карте или из списка',
+                style: TextStyle(
+                  fontSize: 14,
+                  color: AppTheme.textSecondary,
+                ),
+              ),
+              const SizedBox(height: 16),
+              if (mapProvider.addresses.isEmpty)
+                const Center(
+                  child: Text(
+                    'Нет доступных адресов рядом',
+                    style: TextStyle(color: AppTheme.textSecondary),
+                  ),
+                )
+              else
+                SizedBox(
+                  height: 300,
+                  child: ListView.builder(
+                    itemCount: mapProvider.addresses.length,
+                    itemBuilder: (context, index) {
+                      final address = mapProvider.addresses[index];
+                      return ListTile(
+                        leading: const Icon(
+                          Icons.location_on,
+                          color: AppTheme.primaryBlue,
+                        ),
+                        title: Text(
+                          address.name,
+                          style: const TextStyle(color: AppTheme.textPrimary),
+                        ),
+                        subtitle: Text(
+                          address.address,
+                          style: const TextStyle(color: AppTheme.textSecondary),
+                        ),
+                        onTap: () {
+                          Navigator.pop(context);
+                          Navigator.push(
+                            context,
+                            MaterialPageRoute(
+                              builder: (_) => ContributeScreen(address: address),
+                            ),
+                          ).then((_) => setState(() => _selectedIndex = 0));
+                        },
+                      );
+                    },
+                  ),
+                ),
+            ],
+          ),
+        );
+      },
+    ).then((_) => setState(() => _selectedIndex = 0));
   }
 
   Future<void> _requestLocationPermission() async {
@@ -381,11 +476,17 @@ class _MapScreenState extends State<MapScreen> {
         currentIndex: _selectedIndex,
         onTap: (index) {
           setState(() => _selectedIndex = index);
+
+          if (index == 1) {
+            // Вклад - показываем список адресов для вклада
+            _showContributeAddressPicker();
+          }
+
           if (index == 2) {
             Navigator.push(
               context,
               MaterialPageRoute(builder: (_) => const ProfileScreen()),
-            );
+            ).then((_) => setState(() => _selectedIndex = 0));
           }
         },
         backgroundColor: AppTheme.cardDark,

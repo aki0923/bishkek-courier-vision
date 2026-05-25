@@ -8,7 +8,7 @@ class ApiService {
   // Для Android эмулятора: http://10.0.2.2:8000
   // Для iOS симулятора: http://localhost:8000
   // Для реального устройства: http://YOUR_IP:8000
-  static const String baseUrl = 'http://10.0.2.2:8000/api';
+  static const String baseUrl = 'http://localhost:8000/api';
 
   String? _token;
 

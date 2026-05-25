@@ -32,6 +32,8 @@ COPY --from=composer /app/vendor ./vendor
 COPY . .
 
 # Generate autoloader
+COPY --from=composer:2.6 /usr/bin/composer /usr/bin/composer
+
 RUN composer dump-autoload --optimize
 
 # Set permissions

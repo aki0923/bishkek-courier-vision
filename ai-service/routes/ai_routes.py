@@ -75,7 +75,11 @@ def verify_entrance():
                 'confidence': spam_result['confidence'],
                 'details': spam_result['reason'],
                 'points_earned': 0,
-                'ai_provider': 'Groq Llama 4 Scout'
+                'ai_metadata': {                                    
+                    'provider': 'Groq',
+                    'model': 'meta-llama/llama-4-scout-17b-16e-instruct',
+                    'tokens_used': spam_result.get('usage', {}).get('total_tokens', 0)
+                }
             })
         
         # Step 2: Entrance verification
